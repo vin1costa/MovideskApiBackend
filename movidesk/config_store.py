@@ -1,46 +1,52 @@
-
-import json, os
+import os, json
+from pathlib import Path
 from typing import Dict, Any
-from .constants import CONFIG_FILE, ENV_TOKEN
-from .security import is_hashed, hash_password
 
-DEFAULT_CONFIG = {
-    "token": "",
+APP_NAME = "MovideskApp"
+
+# Onde salvar o config (sempre área do usuário, gravável)
+def _user_config_dir() -> Path:
+    base = os.getenv("APPDATA") or os.getenv("LOCALAPPDATA") or str(Path.home())
+    p = Path(base) / APP_NAME
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+CONFIG_FILE = _user_config_dir() / "config.json"
+
+# Config padrão mínima; ajuste se quiser defaults específicos
+DEFAULT_CONFIG: Dict[str, Any] = {
     "usuarios": {
-        "admin": {"senha": "admin", "agent_id": "", "admin": True},
-    }
+        # usuário admin padrão (sem senha definida)
+        "admin": {"senha": "", "agent_id": "", "admin": True}
+    },
+    # outros campos que seu app possa usar:
+    "token": "",
+    "lang": "pt-BR",
 }
 
-def _ensure_admin_flag(cfg: Dict[str, Any]) -> None:
-    for nome, dados in cfg.get("usuarios", {}).items():
-        if "admin" not in dados:
-            dados["admin"] = (nome == "admin")
-
-def _migrate_passwords(cfg: Dict[str, Any]) -> bool:
-    """Hash legacy plaintext passwords. Returns True if changes were made."""
-    changed = False
-    for nome, user in cfg.get("usuarios", {}).items():
-        pwd = user.get("senha", "")
-        if pwd and not is_hashed(pwd):
-            user["senha"] = hash_password(pwd)
-            changed = True
-    return changed
+def _ensure_minimum(cfg: Dict[str, Any]) -> None:
+    # Garante chaves básicas
+    cfg.setdefault("usuarios", {})
+    if "admin" not in cfg["usuarios"]:
+        cfg["usuarios"]["admin"] = {"senha": "", "agent_id": "", "admin": True}
+    cfg.setdefault("token", "")
+    cfg.setdefault("lang", "pt-BR")
 
 def load_config() -> Dict[str, Any]:
+    # Lê config do diretório do usuário; se não existir, cria com defaults
     if CONFIG_FILE.exists():
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception:
+            cfg = DEFAULT_CONFIG.copy()
     else:
         cfg = DEFAULT_CONFIG.copy()
-    _ensure_admin_flag(cfg)
-    if _migrate_passwords(cfg):
-        save_config(cfg)
-    # Prefer env token if present
-    env_token = os.getenv(ENV_TOKEN, "").strip()
-    if env_token:
-        cfg["token"] = env_token
+        save_config(cfg)  # persiste o padrão no primeiro uso
+    _ensure_minimum(cfg)
     return cfg
 
 def save_config(cfg: Dict[str, Any]) -> None:
+    _ensure_minimum(cfg)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=4, ensure_ascii=False)
+        json.dump(cfg, f, indent=2, ensure_ascii=False)
