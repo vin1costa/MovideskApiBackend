@@ -1,10 +1,11 @@
+# movidesk/config_store.py
 import os, json
 from pathlib import Path
 from typing import Dict, Any
+from .security import is_hashed, hash_password
 
 APP_NAME = "MovideskApp"
 
-# Onde salvar o config (sempre área do usuário, gravável)
 def _user_config_dir() -> Path:
     base = os.getenv("APPDATA") or os.getenv("LOCALAPPDATA") or str(Path.home())
     p = Path(base) / APP_NAME
@@ -13,27 +14,32 @@ def _user_config_dir() -> Path:
 
 CONFIG_FILE = _user_config_dir() / "config.json"
 
-# Config padrão mínima; ajuste se quiser defaults específicos
 DEFAULT_CONFIG: Dict[str, Any] = {
     "usuarios": {
-        # usuário admin padrão (sem senha definida)
         "admin": {"senha": "", "agent_id": "", "admin": True}
     },
-    # outros campos que seu app possa usar:
     "token": "",
     "lang": "pt-BR",
 }
 
 def _ensure_minimum(cfg: Dict[str, Any]) -> None:
-    # Garante chaves básicas
     cfg.setdefault("usuarios", {})
     if "admin" not in cfg["usuarios"]:
         cfg["usuarios"]["admin"] = {"senha": "", "agent_id": "", "admin": True}
     cfg.setdefault("token", "")
     cfg.setdefault("lang", "pt-BR")
 
+def _migrate_passwords(cfg: Dict[str, Any]) -> bool:
+    changed = False
+    users = cfg.get("usuarios", {})
+    for name, u in list(users.items()):
+        pw = (u or {}).get("senha", "")
+        if pw and not is_hashed(pw):
+            u["senha"] = hash_password(pw)
+            changed = True
+    return changed
+
 def load_config() -> Dict[str, Any]:
-    # Lê config do diretório do usuário; se não existir, cria com defaults
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -42,8 +48,10 @@ def load_config() -> Dict[str, Any]:
             cfg = DEFAULT_CONFIG.copy()
     else:
         cfg = DEFAULT_CONFIG.copy()
-        save_config(cfg)  # persiste o padrão no primeiro uso
+        save_config(cfg)
     _ensure_minimum(cfg)
+    if _migrate_passwords(cfg):
+        save_config(cfg)
     return cfg
 
 def save_config(cfg: Dict[str, Any]) -> None:
