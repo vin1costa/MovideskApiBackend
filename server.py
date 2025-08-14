@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 # --- Config ---
 DB_PATH = os.getenv("DB_PATH", "usuarios.db")
-app = FastAPI(title="Minha API LAN")
+app = FastAPI(title="Minha API LAN", docs_url="/", redoc_url=None)
 
 # --- DB helpers ---
 def get_db():
