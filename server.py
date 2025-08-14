@@ -1,0 +1,58 @@
+import os
+import sqlite3
+from typing import List
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+# --- Config ---
+DB_PATH = os.getenv("DB_PATH", "usuarios.db")
+app = FastAPI(title="Minha API LAN")
+
+# --- DB helpers ---
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT NOT NULL
+        )
+    """)
+    return conn
+
+# --- Models ---
+class UsuarioIn(BaseModel):
+    nome: str
+
+class UsuarioOut(BaseModel):
+    id: int
+    nome: str
+
+# --- Routes ---
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+@app.post("/usuarios", response_model=UsuarioOut)
+def criar_usuario(usuario: UsuarioIn):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("INSERT INTO usuarios (nome) VALUES (?)", (usuario.nome,))
+    conn.commit()
+    user_id = cur.lastrowid
+    conn.close()
+    return {"id": user_id, "nome": usuario.nome}
+
+@app.get("/usuarios", response_model=List[UsuarioOut])
+def listar_usuarios():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, nome FROM usuarios")
+    rows = cur.fetchall()
+    conn.close()
+    return [{"id": r[0], "nome": r[1]} for r in rows]
+
+# --- Local dev convenience ---
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "8000"))  # Railway define PORT em runtime
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=True)

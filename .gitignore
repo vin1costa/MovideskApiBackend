@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+.env
+.venv/
+env/
+venv/
+
+# Build artefacts
+build/
+dist/
+*.spec
+
+# OS
+.DS_Store
+Thumbs.db
