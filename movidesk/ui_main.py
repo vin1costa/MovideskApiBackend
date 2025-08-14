@@ -15,7 +15,7 @@ class App(tb.Window):
     def __init__(self):
         super().__init__(themename="flatly")
         self.title(T["app_title"])
-        self.geometry("560x560")
+        self.geometry("720x720")
         self.resizable(False, False)
 
         self.current_user = None
@@ -190,7 +190,7 @@ class AdminWindow(tb.Toplevel):
     def __init__(self, master, on_change=None):
         super().__init__(master)
         self.title(T["admin_title"])
-        self.geometry("640x500")
+        self.geometry("720x720")
         self.resizable(False, False)
         self.on_change = on_change
 
