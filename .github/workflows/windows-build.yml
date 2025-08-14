@@ -1,0 +1,51 @@
+name: Build Windows EXE (Movidesk Client)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'movidesk/**'
+      - 'backend.json'
+      - '.github/workflows/windows-build.yml'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install ttkbootstrap requests pyinstaller
+
+      - name: Verify entrypoint exists
+        shell: bash
+        run: |
+          test -f "movidesk/main.py" || (echo "ERRO: movidesk/main.py não encontrado" && exit 1)
+          test -f "backend.json" || (echo "ERRO: backend.json não encontrado (adicione na raiz)" && exit 1)
+
+      - name: Build EXE with PyInstaller
+        run: |
+          pyinstaller --noconsole --onefile --name MovideskApp --icon app_refactor/icon.ico --add-data "backend.json;." -p . movidesk/main.py
+        shell: bash
+
+      - name: Package artifact
+        run: |
+          mkdir -p out
+          copy dist\MovideskApp.exe out\MovideskApp.exe
+          copy backend.json out\backend.json
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MovideskApp_Windows
+          path: out/*
