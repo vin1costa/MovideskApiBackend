@@ -1,3 +1,4 @@
 {
-  "backend_base": "https://web-production-ba1e.up.railway.app"
+  "backend_base": "https://web-production-ba1e.up.railway.app",
+  "remote_config_url": "https://web-production-ba1e.up.railway.app/client-config"
 }
