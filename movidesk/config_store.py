@@ -1,4 +1,3 @@
-# movidesk/config_store.py
 import os
 import sys
 import json
@@ -19,7 +18,7 @@ def _user_config_dir() -> Path:
 CONFIG_FILE = _user_config_dir() / "config.json"
 REMOTE_CACHE = _user_config_dir() / "remote_config.cache.json"
 ADMIN_KEY_FILE = _user_config_dir() / "admin.key"  # preferencial
-ADMIN_KEY_SIDECAR = None  # definido dinamicamente no _exe_dir()
+ADMIN_KEY_SIDECAR: Optional[Path] = None  # definido em runtime
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "usuarios": {"admin": {"senha": "", "agent_id": "", "admin": True}},
@@ -57,6 +56,7 @@ def _read_backend_json() -> Dict[str, Any]:
         return {}
 
 def _fetch_remote(url: str, timeout=8) -> Tuple[Dict[str, Any], bool]:
+    """Busca config remoto; em sucesso salva cache. Em falha, tenta cache."""
     try:
         r = requests.get(url, timeout=timeout)
         r.raise_for_status()
@@ -72,6 +72,7 @@ def _fetch_remote(url: str, timeout=8) -> Tuple[Dict[str, Any], bool]:
         return {}, False
 
 def _overlay(base_cfg: Dict[str, Any], overlay_cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Overlay seguro: token só se vier não-vazio; usuarios faz merge; demais chaves substituem."""
     out = {**base_cfg}
     for k, v in overlay_cfg.items():
         if k == "token":
@@ -86,6 +87,7 @@ def _overlay(base_cfg: Dict[str, Any], overlay_cfg: Dict[str, Any]) -> Dict[str,
     return out
 
 def load_config() -> Dict[str, Any]:
+    # define sidecar da admin key (ao lado do .exe)
     global ADMIN_KEY_SIDECAR
     ADMIN_KEY_SIDECAR = _exe_dir() / "admin_key.txt"
 
@@ -97,7 +99,7 @@ def load_config() -> Dict[str, Any]:
             cfg = DEFAULT_CONFIG.copy()
     else:
         cfg = DEFAULT_CONFIG.copy()
-        save_config(cfg)  # cria o local
+        save_config(cfg)  # cria arquivo local
 
     _ensure_minimum(cfg)
     if _migrate_passwords(cfg):
@@ -118,34 +120,35 @@ def _save_local(cfg: Dict[str, Any]) -> None:
     CONFIG_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
 
 def _load_admin_key() -> Optional[str]:
-    # prioridade: %APPDATA%\MovideskApp\admin.key
+    # 1) %APPDATA%\MovideskApp\admin.key
     if ADMIN_KEY_FILE.exists():
         k = ADMIN_KEY_FILE.read_text(encoding="utf-8").strip()
         if k:
             return k
-    # fallback: admin_key.txt ao lado do .exe
+    # 2) admin_key.txt ao lado do .exe
     if ADMIN_KEY_SIDECAR and ADMIN_KEY_SIDECAR.exists():
         k = ADMIN_KEY_SIDECAR.read_text(encoding="utf-8").strip()
         if k:
             return k
     return None
 
-def _push_remote(cfg: Dict[str, Any]) -> bool:
+def publish_to_all(cfg: Dict[str, Any]) -> Tuple[bool, str]:
     """
     Envia alterações ao servidor (PUT /client-config).
-    Requer backend.json.remote_config_url e admin key.
-    Retorna True em sucesso, False em falha.
+    Requer:
+      - backend.json com "remote_config_url"
+      - admin.key em %APPDATA%/MovideskApp/ ou admin_key.txt ao lado do .exe
+    Retorna (ok, mensagem).
     """
     bj = _read_backend_json()
     remote_url = (bj.get("remote_config_url") or "").strip()
     if not remote_url:
-        return False
+        return (False, "remote_config_url não definido em backend.json (ao lado do .exe).")
 
     admin_key = _load_admin_key()
     if not admin_key:
-        return False
+        return (False, "admin key não encontrada. Crie %APPDATA%/MovideskApp/admin.key ou admin_key.txt ao lado do .exe.")
 
-    # enviamos apenas campos de interesse; o servidor faz merge e incrementa versão
     payload = {
         "usuarios": cfg.get("usuarios", {}),
         "token": cfg.get("token", ""),
@@ -158,25 +161,25 @@ def _push_remote(cfg: Dict[str, Any]) -> bool:
     try:
         r = requests.put(remote_url, headers=headers, json=payload, timeout=10)
         if r.status_code == 200:
-            return True
-        return False
-    except Exception:
-        return False
+            return (True, f"Publicado com sucesso: {r.text}")
+        else:
+            return (False, f"Falha ao publicar (status {r.status_code}): {r.text}")
+    except Exception as e:
+        return (False, f"Erro de rede ao publicar: {e}")
 
 def save_config(cfg: Dict[str, Any]) -> None:
     """
-    Salva localmente e tenta publicar no servidor.
-    Assim, quem tiver a admin key fará a publicação central.
-    Quem não tiver, ao menos salva local.
+    Salva somente localmente (explícito). Para propagar a todos, chame publish_to_all(cfg).
     """
     _save_local(cfg)
-    _push_remote(cfg)
 
-# utilitário opcional (p/ atalho F11)
 def refresh_remote_if_any() -> bool:
+    """
+    Força atualização do cache remoto (útil para um atalho F11).
+    """
     bj = _read_backend_json()
     remote_url = (bj.get("remote_config_url") or "").strip()
     if not remote_url:
         return False
-    data, ok = _fetch_remote(remote_url)
+    _, ok = _fetch_remote(remote_url)
     return ok
