@@ -1,0 +1,7 @@
+{
+  "usuarios": {
+    "admin": { "senha": "", "agent_id": "", "admin": true }
+  },
+  "token": "9ae27bf5-ea70-4e54-9ce6-4fe71d1ff6f8",
+  "lang": "pt-BR"
+}
